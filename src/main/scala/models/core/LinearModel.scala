@@ -23,13 +23,13 @@ abstract class LinearModel() extends Serializable {
     // Precision by threshold
     val precision = metrics.precisionByThreshold
     precision.foreach { case (t, p) =>
-      println(s"Threshold: $t, Precision: $p")
+      println(s"Precision Threshold: $t, Precision: $p")
     }
 
     // Recall by threshold
     val recall = metrics.recallByThreshold
     recall.foreach { case (t, r) =>
-      println(s"Threshold: $t, Recall: $r")
+      println(s"Recall Threshold: $t, Recall: $r")
     }
 
     // AUPRC
