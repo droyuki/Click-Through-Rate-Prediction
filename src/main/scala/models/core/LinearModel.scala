@@ -9,27 +9,28 @@ import org.apache.spark.rdd.RDD
   */
 
 abstract class LinearModel() extends Serializable {
-  //  def train(data: RDD[LabeledPoint],hyperParameters:D): GeneralizedLinearModel
-  def hyperParameterTuning(data: RDD[LabeledPoint], test: RDD[LabeledPoint], iteration: List[Int] = List(10, 100, 1000), threshold:List[Double]): List[((Double, Double), GeneralizedLinearModel, (Int, Double))]
+  //dataList : List[(train, test)]
+  def hyperParameterTuning(dataList: List[(RDD[LabeledPoint],RDD[LabeledPoint])], iteration: List[Int] = List(10, 100, 1000), threshold: List[Double]): List[(Double, Double, Double, (Int, Double))]
 
-  final def accurate(model: GeneralizedLinearModel, test: RDD[LabeledPoint] ): (Double, Double) = {
+  final def accurate(model: GeneralizedLinearModel, test: RDD[LabeledPoint]): (Double, Double, Double) = {
     // Compute raw scores on the test set
     val predictionAndLabels = test.map { case LabeledPoint(label, features) =>
       val prediction = model.predict(features)
       (prediction, label)
     }
+
     val metrics = new BinaryClassificationMetrics(predictionAndLabels)
 
     // Precision by threshold
     val precision = metrics.precisionByThreshold
     precision.foreach { case (t, p) =>
-      println(s"Threshold: $t, Precision: $p")
+      println(s"Precision threshold: $t, Precision: $p")
     }
 
     // Recall by threshold
     val recall = metrics.recallByThreshold
     recall.foreach { case (t, r) =>
-      println(s"Threshold: $t, Recall: $r")
+      println(s"Recall threshold: $t, Recall: $r")
     }
 
     // AUPRC
@@ -46,23 +47,15 @@ abstract class LinearModel() extends Serializable {
     val auROC = metrics.areaUnderROC
     println("Area under ROC = " + auROC)
 
-    (auROC, auPRC)
+    //correctNum = TP+TN
+    val correctNum = predictionAndLabels.filter(pair => pair._1 != pair._2).count()
+    println("TP+TN = " + correctNum)
+    (auROC, auPRC, correctNum.toDouble)
   }
 
-  def findBestModel(modelMatrix: List[List[((Double,Double),GeneralizedLinearModel, (Int, Double))]]):(Double, Double, (Int, Double))={
-    val transMatrix = modelMatrix.transpose
-    val length = transMatrix(0).size
-    val sumList = transMatrix.map(l => {
-      val length = l.size
-      var sumAUC = 0.0
-      var sumPRC = 0.0
-      l.foreach(e => {
-        sumAUC = sumAUC + e._1._1
-        sumPRC = sumPRC + e._1._2
-      })
-      (sumAUC/length, sumPRC/length, l(0)._3)
-    })
-    val best = sumList.maxBy((a)=> a._1)
+  def findBestModel(modelList: List[(Double, Double, Double, (Int, Double))]): (Double, Double,Double, (Int, Double)) = {
+    //find by TP+TN
+    val best = modelList.maxBy(a => a._3)
     best
   }
 }

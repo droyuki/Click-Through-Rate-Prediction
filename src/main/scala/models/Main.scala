@@ -1,7 +1,8 @@
 package models
 
-import models.algorithm.{SVM, LogisticRegression}
-import org.apache.spark.mllib.classification.{SVMWithSGD, LogisticRegressionWithLBFGS}
+import models.algorithm.{LogisticRegression, SVM}
+import org.apache.log4j.{Level, LogManager}
+import org.apache.spark.mllib.classification.{LogisticRegressionWithLBFGS, SVMWithSGD}
 import org.apache.spark.mllib.linalg.Vectors
 import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.rdd.RDD
@@ -12,36 +13,49 @@ import util.DataReader
   * Created by WeiChen on 2016/5/26.
   */
 object Main {
+  def getValidationData(data: RDD[LabeledPoint]): List[(RDD[LabeledPoint], RDD[LabeledPoint])] = {
+    val test = for {i <- 1 to 10} yield {
+      val Array(train, test) = data.randomSplit(Array(0.9, 0.1))
+      (train, test)
+    }
+    test.toList
+  }
+
   def main(args: Array[String]) {
     val targetFeatures = List(
-      "banner_pos", "site_id",  "site_category",
-      "app_domain", "C1", "C14", "C15", "C16", "C17", "C18", "C19", "C20", "C21"
+      "site_id", "banner_pos", "C1", "hour", "C21"
     )
-    val data = new DataReader("/Users/WanEnFu/Desktop/small.csv")
+    val Array(trainData, testData) = new DataReader("/Users/WeiChen/Downloads/mid.csv")
       .readData()
       .selectFeatures(targetFeatures)
       .getLabelPoint()
-      .randomSplit(Array(0.6, 0.4))
+      .randomSplit(Array(0.8, 0.2))
 
-    val trainData = data(0)
-    val testData = data(1)
-
+    LogManager.getRootLogger.setLevel(Level.ERROR)
     println("開始訓練模型.....")
-//    val lr = new LogisticRegression
-//    val models = lr.hyperParameterTuning(trainData,testData,List(0),List(0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9))
-//    val bestPar = lr.findBestModel(List(models))
-//    val model = new LogisticRegressionWithLBFGS().setNumClasses(2).run(trainData)
-//    val result = model.clearThreshold().setThreshold(bestPar._3._2)
-//    lr.accurate(result,testData)
-//    println("Threshold: " + bestPar._3._2)
+
+    val splitData = getValidationData(trainData)
+
+    //LR
+    //    val lr = new LogisticRegression
+    //    val lrModels = lr.hyperParameterTuning(splitData,List(0),List(0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9))
+    //    val bestParameter = lr.findBestModel(lrModels)
+    //
+    //    val lrModel = new LogisticRegressionWithLBFGS().setNumClasses(2).run(trainData)
+    //    println("\nHyperparameter complete.\n----------------------")
+    //    println("Best threshold: " + bestParameter._4._2)
+    //    val lrResult = lrModel.clearThreshold().setThreshold(bestParameter._4._2)
+    //    lr.accurate(lrResult,testData)
+
+    //SVM
     val svm = new SVM
-    val models = svm.hyperParameterTuning(trainData, testData, List(10, 20), List(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0))
-    val bestPar = svm.findBestModel(List(models))
-    val model = SVMWithSGD.train(trainData, bestPar._3._1)
-    model.clearThreshold()
+    val svmModels = svm.hyperParameterTuning(splitData, List(10, 20), List(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0))
+    val bestPar = svm.findBestModel(svmModels)
+    val svmModel = SVMWithSGD.train(trainData, bestPar._4._1)
+    svmModel.clearThreshold()
 
     val scoreAndLabels = trainData.map { point =>
-      val score = model.predict(point.features)
+      val score = svmModel.predict(point.features)
       (score, point.label)
     }
 
@@ -55,8 +69,8 @@ object Main {
         Ordering[Double].compare(x._1, y._1)
     })
 
-    val result = model.clearThreshold().setThreshold(min._1 + (max._1-min._1)*bestPar._3._2)
-    svm.accurate(result, testData)
-    println("Threshold: " + bestPar._3._2)
+    val svmResult = svmModel.clearThreshold().setThreshold(min._1 + (max._1 - min._1) * bestPar._4._2)
+    svm.accurate(svmResult, testData)
+    println("Threshold: " + bestPar._4._2)
   }
 }
